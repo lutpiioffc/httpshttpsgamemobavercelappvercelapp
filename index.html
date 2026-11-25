@@ -1,0 +1,1306 @@
+import zipfile
+import os
+
+# Create DIMZ-LEGENDS MOBA 5v5 3D Online Multiplayer Project ZIP package
+index_html = """<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>DIMZ LEGENDS — 5v5 Multiplayer MOBA 3D</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800;900&family=Plus+Jakarta+Sans:wght@500;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.7.2/dist/socket.io.min.js"></script>
+</head>
+<body>
+    <div id="game-container"></div>
+
+    <!-- MAIN MENU OVERLAY -->
+    <div id="main-menu" class="screen-overlay">
+        <div class="menu-top-bar">
+            <div class="user-profile-badge" id="open-profile-btn">
+                <div class="avatar-ring"><i class="fa-solid fa-user-ninja"></i></div>
+                <div>
+                    <strong id="ui-username">DimzLegend</strong>
+                    <small>Mythic ⭐ 45</small>
+                </div>
+            </div>
+            <div class="currencies">
+                <div class="curr-pill"><i class="fa-solid fa-coins text-amber-400"></i> <span id="ui-gold">12,450</span></div>
+                <div class="curr-pill"><i class="fa-solid fa-gem text-cyan-400"></i> <span id="ui-diamonds">850</span></div>
+                <button id="settings-btn" class="icon-btn"><i class="fa-solid fa-gear"></i></button>
+            </div>
+        </div>
+
+        <div class="menu-center">
+            <div class="game-logo-box">
+                <span class="sub-badge">5V5 REAL-TIME MULTIPLAYER MOBA</span>
+                <h1 class="game-logo">DIMZ <span>LEGENDS</span></h1>
+            </div>
+
+            <div class="hero-showcase-card">
+                <div class="hero-info">
+                    <span class="role-tag" id="selected-hero-role">ASSASSIN / FIGHTER</span>
+                    <h2 id="selected-hero-name">Shadow Blade</h2>
+                    <p id="selected-hero-desc">Ahli penyergapan kilat dengan mobilitas tinggi dan burst damage mematikan.</p>
+                </div>
+                <button id="change-hero-btn" class="secondary-btn"><i class="fa-solid fa-shuffle"></i> Ganti Hero</button>
+            </div>
+        </div>
+
+        <div class="menu-footer-bar">
+            <div class="mode-selector">
+                <button class="mode-card active" data-mode="ranked">
+                    <i class="fa-solid fa-trophy"></i>
+                    <div><b>Ranked 5v5</b><small>Epic - Mythic</small></div>
+                </button>
+                <button class="mode-card" data-mode="classic">
+                    <i class="fa-solid fa-shield-halved"></i>
+                    <div><b>Classic Match</b><small>Santai & Latihan</small></div>
+                </button>
+                <button class="mode-card" data-mode="custom">
+                    <i class="fa-solid fa-users"></i>
+                    <div><b>Custom Room</b><small>Main Bareng Teman</small></div>
+                </button>
+            </div>
+            <button id="start-matchmaking-btn" class="play-btn">
+                <i class="fa-solid fa-play"></i>
+                <span>MULAI PERTEMPURAN</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- HERO SELECTION MODAL -->
+    <div id="hero-modal" class="modal-overlay hidden">
+        <div class="modal-card wide">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-shield-cat"></i> PILIH HERO ANDALAN (10 HERO)</h3>
+                <button id="close-hero-modal" class="close-btn"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="hero-grid" id="hero-grid"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SETTINGS MODAL -->
+    <div id="settings-modal" class="modal-overlay hidden">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-gear"></i> PENGATURAN GAME</h3>
+                <button id="close-settings-btn" class="close-btn"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="setting-row">
+                    <span>Grafis 3D</span>
+                    <select id="graphics-select">
+                        <option value="high">High (60 FPS)</option>
+                        <option value="ultra">Ultra (Shadows + Bloom)</option>
+                    </select>
+                </div>
+                <div class="setting-row">
+                    <span>Musik & SFX</span>
+                    <button id="audio-toggle" class="toggle-btn active">ON</button>
+                </div>
+                <div class="setting-row">
+                    <span>Nama Pemain</span>
+                    <input type="text" id="username-input" value="DimzLegend" maxlength="14">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="save-settings-btn" class="primary-btn">Simpan</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MATCHMAKING LOADING OVERLAY -->
+    <div id="matchmaking-overlay" class="screen-overlay hidden">
+        <div class="mm-card">
+            <div class="spinner-neon"></div>
+            <h2>MENCARI PERTANDINGAN 5V5...</h2>
+            <p id="mm-status">Menghubungkan ke Server Multiplayer Socket.IO...</p>
+            <div class="found-players" id="found-players-list"></div>
+            <button id="cancel-mm-btn" class="danger-btn">Batal</button>
+        </div>
+    </div>
+
+    <!-- IN-GAME HUD -->
+    <div id="game-hud" class="hidden">
+        <!-- Top Bar Match Info -->
+        <div class="hud-top">
+            <div class="team-score-box blue">BIRU <span id="blue-score">0</span></div>
+            <div class="match-timer-box" id="match-timer">10:00</div>
+            <div class="team-score-box red"><span id="red-score">0</span> MERAH</div>
+            <button id="shop-toggle-btn" class="hud-icon-btn"><i class="fa-solid fa-store"></i></button>
+            <button id="settings-ingame-btn" class="hud-icon-btn"><i class="fa-solid fa-pause"></i></button>
+        </div>
+
+        <!-- Notification Banner -->
+        <div id="battle-announcer" class="battle-announcer hidden">FIRST BLOOD!</div>
+
+        <!-- Player Status Bar -->
+        <div class="player-hud-bar">
+            <div class="hero-avatar-box">
+                <span id="hud-hero-name">Shadow Blade</span>
+                <small>Lv. <span id="hud-level">1</span></small>
+            </div>
+            <div class="bars-group">
+                <div class="bar-track hp"><div id="hp-fill"></div><span id="hp-text">1000/1000</span></div>
+                <div class="bar-track mp"><div id="mp-fill"></div><span id="mp-text">500/500</span></div>
+            </div>
+            <div class="gold-pill"><i class="fa-solid fa-coins text-amber-400"></i> <span id="hud-gold">300</span></div>
+        </div>
+
+        <!-- In-Game Shop Modal -->
+        <div id="ingame-shop" class="ingame-shop hidden">
+            <div class="shop-header">
+                <h3>TOKO ITEM PERTEMPURAN</h3>
+                <button id="close-shop-btn" class="close-btn"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="shop-items-grid" id="shop-items-grid"></div>
+        </div>
+
+        <!-- Mobile Touch Controls -->
+        <div id="joystick-zone">
+            <div id="joystick-base">
+                <div id="joystick-stick"></div>
+            </div>
+        </div>
+
+        <div class="skill-controls">
+            <button id="btn-recall" class="skill-btn recall-btn" title="Recall"><span>RECALL</span></button>
+            <button id="btn-spell" class="skill-btn spell-btn" title="Battle Spell"><span>RETRI</span></button>
+            
+            <div class="main-skills">
+                <button id="btn-skill1" class="skill-btn s1">S1</button>
+                <button id="btn-skill2" class="skill-btn s2">S2</button>
+                <button id="btn-skill3" class="skill-btn s3">S3</button>
+                <button id="btn-ultimate" class="skill-btn ultimate">ULTI</button>
+            </div>
+
+            <button id="btn-attack" class="skill-btn attack-btn" title="Basic Attack"><i class="fa-solid fa-crosshairs"></i></button>
+        </div>
+
+        <div id="camera-touch-zone"></div>
+    </div>
+
+    <!-- MATCH RESULT MODAL -->
+    <div id="result-modal" class="modal-overlay hidden">
+        <div class="modal-card result-card">
+            <h1 id="result-title">KEMENANGAN TIM BIRU!</h1>
+            <p id="result-subtitle">Base musuh berhasil dihancurkan.</p>
+            <div class="mvp-box" id="mvp-box">
+                <i class="fa-solid fa-crown text-amber-400"></i>
+                <div>
+                    <strong>MVP: DimzLegend (Shadow Blade)</strong>
+                    <small>Kills: 12 • Deaths: 2 • Assists: 8</small>
+                </div>
+            </div>
+            <button id="back-to-menu-btn" class="primary-btn">KEMBALI KE MENU UTAMA</button>
+        </div>
+    </div>
+
+    <script src="multiplayer.js"></script>
+    <script src="game.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
+"""
+
+style_css = """* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none;
+    -webkit-user-select: none;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+}
+
+body, html {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #09090e;
+    color: #f8fafc;
+}
+
+#game-container {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+}
+
+.hidden { display: none !important; }
+
+/* Main Menu */
+.screen-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    background: radial-gradient(circle at center, rgba(15, 23, 42, 0.85), rgba(5, 5, 10, 0.96));
+    backdrop-filter: blur(12px);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 24px;
+}
+
+.menu-top-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.user-profile-badge {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(15, 23, 42, 0.8);
+    border: 1px solid #334155;
+    padding: 8px 16px;
+    border-radius: 99px;
+    cursor: pointer;
+}
+
+.avatar-ring {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+}
+
+.user-profile-badge strong { font-size: 14px; font-family: 'Orbitron', sans-serif; display: block; }
+.user-profile-badge small { font-size: 11px; color: #f59e0b; }
+
+.currencies {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.curr-pill {
+    background: rgba(15, 23, 42, 0.8);
+    border: 1px solid #334155;
+    padding: 8px 16px;
+    border-radius: 99px;
+    font-size: 13px;
+    font-weight: 700;
+    font-family: 'Orbitron', sans-serif;
+}
+
+.icon-btn {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    background: rgba(15, 23, 42, 0.8);
+    border: 1px solid #334155;
+    color: #fff;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+}
+
+.menu-center {
+    max-width: 600px;
+    width: 100%;
+    margin: auto;
+    text-align: center;
+}
+
+.game-logo-box { margin-bottom: 24px; }
+.sub-badge {
+    display: inline-block;
+    padding: 5px 14px;
+    border-radius: 99px;
+    background: rgba(59, 130, 246, 0.15);
+    border: 1px solid #3b82f6;
+    color: #93c5fd;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 2px;
+    margin-bottom: 10px;
+}
+
+.game-logo {
+    font-family: 'Orbitron', sans-serif;
+    font-size: clamp(36px, 6vw, 56px);
+    font-weight: 900;
+    letter-spacing: 2px;
+    text-shadow: 0 0 30px rgba(59, 130, 246, 0.6);
+}
+
+.game-logo span { color: #f59e0b; }
+
+.hero-showcase-card {
+    background: rgba(15, 23, 42, 0.75);
+    border: 1px solid #334155;
+    border-radius: 20px;
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    text-align: left;
+    margin-bottom: 20px;
+}
+
+.hero-info .role-tag { font-size: 10px; font-weight: 800; color: #38bdf8; letter-spacing: 1px; }
+.hero-info h2 { font-family: 'Orbitron', sans-serif; font-size: 20px; margin: 4px 0; }
+.hero-info p { font-size: 12.5px; color: #94a3b8; }
+
+.menu-footer-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    max-width: 600px;
+    width: 100%;
+    margin: 0 auto;
+}
+
+.mode-selector {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+}
+
+.mode-card {
+    background: rgba(15, 23, 42, 0.8);
+    border: 2px solid #334155;
+    border-radius: 14px;
+    padding: 12px;
+    color: #fff;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-align: left;
+    transition: all 0.2s;
+}
+
+.mode-card.active {
+    border-color: #3b82f6;
+    background: rgba(59, 130, 246, 0.2);
+    box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);
+}
+
+.mode-card i { font-size: 20px; color: #3b82f6; }
+.mode-card b { font-size: 12px; font-family: 'Orbitron', sans-serif; display: block; }
+.mode-card small { font-size: 10px; color: #94a3b8; }
+
+.play-btn {
+    width: 100%;
+    padding: 18px;
+    border: none;
+    border-radius: 16px;
+    background: linear-gradient(135deg, #2563eb, #7c3aed);
+    color: #fff;
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 900;
+    font-size: 16px;
+    letter-spacing: 1px;
+    cursor: pointer;
+    box-shadow: 0 8px 30px rgba(124, 58, 237, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    transition: transform 0.15s;
+}
+
+.play-btn:active { transform: scale(0.97); }
+
+/* Modals */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(8px);
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+}
+
+.modal-card {
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 20px;
+    width: 100%;
+    max-width: 420px;
+    overflow: hidden;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+}
+
+.modal-card.wide { max-width: 800px; }
+
+.modal-header {
+    padding: 18px 24px;
+    border-bottom: 1px solid #1e293b;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: 'Orbitron', sans-serif;
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    color: #94a3b8;
+    font-size: 20px;
+    cursor: pointer;
+}
+
+.modal-body {
+    padding: 24px;
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+.modal-footer {
+    padding: 16px 24px;
+    border-top: 1px solid #1e293b;
+    display: flex;
+    justify-content: flex-end;
+}
+
+/* Hero Selector Grid */
+.hero-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 12px;
+}
+
+.hero-item {
+    background: #1e293b;
+    border: 2px solid #334155;
+    border-radius: 14px;
+    padding: 14px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.hero-item.active {
+    border-color: #3b82f6;
+    background: rgba(59, 130, 246, 0.2);
+    box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);
+}
+
+.hero-item h4 { font-family: 'Orbitron', sans-serif; font-size: 13px; margin: 6px 0 2px; }
+.hero-item small { font-size: 10px; color: #38bdf8; font-weight: 700; }
+
+/* Matchmaking Overlay */
+.mm-card {
+    background: #0f172a;
+    border: 2px solid #3b82f6;
+    border-radius: 24px;
+    padding: 36px;
+    max-width: 440px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 0 40px rgba(59, 130, 246, 0.4);
+}
+
+.spinner-neon {
+    width: 50px;
+    height: 50px;
+    border: 4px solid rgba(59, 130, 246, 0.2);
+    border-top-color: #3b82f6;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 20px;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.found-players {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin: 20px 0;
+}
+
+.player-bubble {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: #1e293b;
+    border: 2px solid #3b82f6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.danger-btn {
+    background: rgba(239, 68, 68, 0.2);
+    border: 1px solid #ef4444;
+    color: #fca5a5;
+    padding: 12px 24px;
+    border-radius: 12px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+/* IN-GAME HUD */
+#game-hud {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    pointer-events: none;
+}
+
+.hud-top {
+    position: fixed;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    pointer-events: auto;
+}
+
+.team-score-box {
+    background: rgba(15, 23, 42, 0.9);
+    border: 1px solid #334155;
+    padding: 6px 16px;
+    border-radius: 99px;
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 900;
+    font-size: 14px;
+}
+.team-score-box.blue { border-color: #3b82f6; color: #3b82f6; }
+.team-score-box.red { border-color: #ef4444; color: #ef4444; }
+
+.match-timer-box {
+    background: rgba(15, 23, 42, 0.9);
+    border: 1px solid #334155;
+    padding: 6px 14px;
+    border-radius: 99px;
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 800;
+    font-size: 13px;
+}
+
+.hud-icon-btn {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: rgba(15, 23, 42, 0.9);
+    border: 1px solid #334155;
+    color: #fff;
+    cursor: pointer;
+    pointer-events: auto;
+}
+
+.battle-announcer {
+    position: fixed;
+    top: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(15, 23, 42, 0.95);
+    border: 2px solid #f59e0b;
+    color: #f59e0b;
+    padding: 10px 24px;
+    border-radius: 12px;
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 900;
+    font-size: 16px;
+    letter-spacing: 2px;
+    box-shadow: 0 0 25px rgba(245, 158, 11, 0.5);
+}
+
+.player-hud-bar {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid #334155;
+    padding: 12px;
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    pointer-events: auto;
+    backdrop-filter: blur(6px);
+}
+
+.hero-avatar-box strong { font-family: 'Orbitron', sans-serif; font-size: 13px; display: block; }
+.hero-avatar-box small { font-size: 11px; color: #38bdf8; }
+
+.bars-group { display: flex; flex-direction: column; gap: 4px; width: 150px; }
+.bar-track {
+    width: 100%;
+    height: 10px;
+    background: #1e293b;
+    border-radius: 5px;
+    overflow: hidden;
+    position: relative;
+}
+.bar-track.hp div { width: 100%; height: 100%; background: #22c55e; transition: width 0.2s; }
+.bar-track.mp div { width: 100%; height: 100%; background: #3b82f6; transition: width 0.2s; }
+.bar-track span {
+    position: absolute;
+    inset: 0;
+    font-size: 8px;
+    font-weight: 800;
+    text-align: center;
+    line-height: 10px;
+}
+
+.gold-pill { font-family: 'Orbitron', sans-serif; font-size: 13px; font-weight: 800; }
+
+/* In-Game Shop */
+.ingame-shop {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: #0f172a;
+    border: 2px solid #334155;
+    border-radius: 20px;
+    width: 420px;
+    max-width: 90vw;
+    z-index: 40;
+    pointer-events: auto;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+}
+
+.shop-header {
+    padding: 14px 18px;
+    border-bottom: 1px solid #1e293b;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 13px;
+}
+
+.shop-items-grid {
+    padding: 16px;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.shop-item-card {
+    background: #1e293b;
+    border: 1px solid #334155;
+    padding: 10px;
+    border-radius: 10px;
+    cursor: pointer;
+    text-align: left;
+}
+.shop-item-card:hover { border-color: #3b82f6; }
+.shop-item-card b { font-size: 12px; display: block; margin-bottom: 2px; }
+.shop-item-card small { color: #f59e0b; font-weight: 700; font-size: 11px; }
+
+/* Mobile Touch Controls */
+#camera-touch-zone {
+    position: fixed;
+    top: 70px;
+    right: 0;
+    width: 55%;
+    height: 55%;
+    pointer-events: auto;
+}
+
+#joystick-zone {
+    position: fixed;
+    bottom: 24px;
+    left: 200px;
+    width: 120px;
+    height: 120px;
+    pointer-events: auto;
+}
+
+#joystick-base {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.08);
+    border: 2px solid rgba(59, 130, 246, 0.4);
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#joystick-stick {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #3b82f6, #1d4ed8);
+    box-shadow: 0 0 15px rgba(59, 130, 246, 0.6);
+    position: absolute;
+}
+
+.skill-controls {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    pointer-events: auto;
+}
+
+.main-skills {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+}
+
+.skill-btn {
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.4);
+    color: #fff;
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 900;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+}
+.skill-btn:active { transform: scale(0.9); }
+
+.s1, .s2, .s3 { width: 56px; height: 56px; background: radial-gradient(circle, #3b82f6, #1d4ed8); font-size: 14px; }
+.ultimate { width: 72px; height: 72px; background: radial-gradient(circle, #f59e0b, #d97706); font-size: 15px; }
+.attack-btn { width: 84px; height: 84px; background: radial-gradient(circle, #ef4444, #991b1b); font-size: 26px; }
+.recall-btn, .spell-btn { width: 48px; height: 48px; border-radius: 14px; background: #1e293b; font-size: 9px; font-weight: 800; }
+
+.result-card { text-align: center; }
+.result-card h1 { font-family: 'Orbitron', sans-serif; font-size: 24px; color: #f59e0b; margin-bottom: 6px; }
+.result-card p { color: #94a3b8; font-size: 13px; margin-bottom: 20px; }
+
+.mvp-box {
+    background: #1e293b;
+    border: 1px solid #334155;
+    padding: 14px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    text-align: left;
+    margin-bottom: 24px;
+}
+.mvp-box i { font-size: 24px; }
+.mvp-box strong { font-size: 13px; display: block; }
+.mvp-box small { font-size: 11px; color: #94a3b8; }
+"""
+
+script_js = """// DIMZ LEGENDS - UI Navigation & Hero Management
+const HEROES_DATA = [
+    { id: 'shadow_blade', name: 'Shadow Blade', role: 'Assassin', desc: 'Serangan kilat dan teleportasi mematikan.' },
+    { id: 'storm_mage', name: 'Storm Mage', role: 'Mage', desc: 'Area magic damage besar dan slow.' },
+    { id: 'titan_tank', name: 'Titan Tank', role: 'Tank', desc: 'Pertahanan kokoh garis depan.' },
+    { id: 'solar_marksman', name: 'Solar Marksman', role: 'Marksman', desc: 'Attack speed tinggi dan critical.' },
+    { id: 'iron_fighter', name: 'Iron Fighter', role: 'Fighter', desc: 'Keseimbangan damage dan durabilitas.' },
+    { id: 'divine_support', name: 'Divine Support', role: 'Support', desc: 'Heal dan buff rekan satu tim.' },
+    { id: 'phantom_assassin', name: 'Phantom', role: 'Assassin', desc: 'Stealth dan critical hit.' },
+    { id: 'frost_queen', name: 'Frost Queen', role: 'Mage', desc: 'Freeze crowd control area.' },
+    { id: 'golem_guard', name: 'Golem Guard', role: 'Tank', desc: 'Stun area dan HP regenerasi.' },
+    { id: 'viper_hunter', name: 'Viper Hunter', role: 'Marksman', desc: 'Poison damage jarak jauh.' }
+];
+
+let playerConfig = JSON.parse(localStorage.getItem('dimz_player')) || {
+    username: 'DimzLegend',
+    gold: 12450,
+    diamonds: 850,
+    selectedHero: HEROES_DATA[0]
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('ui-username').textContent = playerConfig.username;
+    document.getElementById('ui-gold').textContent = playerConfig.gold.toLocaleString();
+    document.getElementById('ui-diamonds').textContent = playerConfig.diamonds.toLocaleString();
+    document.getElementById('selected-hero-name').textContent = playerConfig.selectedHero.name;
+    document.getElementById('selected-hero-role').textContent = playerConfig.selectedHero.role.toUpperCase();
+    document.getElementById('selected-hero-desc').textContent = playerConfig.selectedHero.desc;
+
+    // Mode Selector
+    document.querySelectorAll('.mode-card').forEach(card => {
+        card.addEventListener('click', () => {
+            document.querySelectorAll('.mode-card').forEach(c => c.classList.remove('active'));
+            card.classList.add('active');
+        });
+    });
+
+    // Hero Modal
+    const heroModal = document.getElementById('hero-modal');
+    document.getElementById('change-hero-btn').onclick = () => {
+        renderHeroGrid();
+        heroModal.classList.remove('hidden');
+    };
+    document.getElementById('close-hero-modal').onclick = () => heroModal.classList.add('hidden');
+
+    // Settings Modal
+    const settingsModal = document.getElementById('settings-modal');
+    document.getElementById('settings-btn').onclick = () => settingsModal.classList.remove('hidden');
+    document.getElementById('settings-ingame-btn').onclick = () => settingsModal.classList.remove('hidden');
+    document.getElementById('close-settings-btn').onclick = () => settingsModal.classList.add('hidden');
+    document.getElementById('save-settings-btn').onclick = () => {
+        playerConfig.username = document.getElementById('username-input').value.trim() || 'DimzLegend';
+        localStorage.setItem('dimz_player', JSON.stringify(playerConfig));
+        document.getElementById('ui-username').textContent = playerConfig.username;
+        settingsModal.classList.add('hidden');
+    };
+
+    // Matchmaking Start
+    document.getElementById('start-matchmaking-btn').onclick = () => {
+        document.getElementById('matchmaking-overlay').classList.remove('hidden');
+        simulateMatchmaking();
+    };
+    document.getElementById('cancel-mm-btn').onclick = () => {
+        document.getElementById('matchmaking-overlay').classList.add('hidden');
+    };
+
+    // Back to menu
+    document.getElementById('back-to-menu-btn').onclick = () => {
+        document.getElementById('result-modal').classList.add('hidden');
+        document.getElementById('game-hud').classList.add('hidden');
+        document.getElementById('main-menu').classList.remove('hidden');
+    };
+});
+
+function renderHeroGrid() {
+    const grid = document.getElementById('hero-grid');
+    grid.innerHTML = '';
+    HEROES_DATA.forEach(hero => {
+        const div = document.createElement('div');
+        div.className = `hero-item ${playerConfig.selectedHero.id === hero.id ? 'active' : ''}`;
+        div.innerHTML = `
+            <i class="fa-solid fa-user-ninja text-3xl text-blue-400"></i>
+            <h4>${hero.name}</h4>
+            <small>${hero.role}</small>
+        `;
+        div.onclick = () => {
+            playerConfig.selectedHero = hero;
+            localStorage.setItem('dimz_player', JSON.stringify(playerConfig));
+            document.getElementById('selected-hero-name').textContent = hero.name;
+            document.getElementById('selected-hero-role').textContent = hero.role.toUpperCase();
+            document.getElementById('selected-hero-desc').textContent = hero.desc;
+            heroModal.classList.add('hidden');
+        };
+        grid.appendChild(div);
+    });
+}
+
+function simulateMatchmaking() {
+    const list = document.getElementById('found-players-list');
+    list.innerHTML = '';
+    let found = 0;
+    const interval = setInterval(() => {
+        found++;
+        const bubble = document.createElement('div');
+        bubble.className = 'player-bubble';
+        bubble.textContent = found;
+        list.appendChild(bubble);
+        if (found >= 10) {
+            clearInterval(interval);
+            setTimeout(() => {
+                document.getElementById('matchmaking-overlay').classList.add('hidden');
+                document.getElementById('main-menu').classList.add('hidden');
+                document.getElementById('game-hud').classList.remove('hidden');
+                if (window.dimzGameInstance) window.dimzGameInstance.startMatch();
+            }, 600);
+        }
+    }, 400);
+}
+"""
+
+game_js = """// DIMZ LEGENDS - Three.js 3D MOBA Arena Engine & Gameplay
+class DimzGame {
+    constructor() {
+        this.initThree();
+        this.initMap();
+        this.initPlayer();
+        this.initControls();
+        this.multiplayer = new MultiplayerClient(this);
+    }
+
+    initThree() {
+        const container = document.getElementById('game-container');
+        this.scene = new THREE.Scene();
+        this.scene.background = new THREE.Color(0x09090e);
+        this.scene.fog = new THREE.FogExp2(0x09090e, 0.008);
+
+        this.camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
+        this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.shadowMap.enabled = true;
+        container.appendChild(this.renderer.domElement);
+
+        const ambient = new THREE.AmbientLight(0xffffff, 0.7);
+        this.scene.add(ambient);
+
+        const sun = new THREE.DirectionalLight(0xffffff, 1.0);
+        sun.position.set(40, 80, 40);
+        sun.castShadow = true;
+        this.scene.add(sun);
+    }
+
+    initMap() {
+        // Arena Floor (MOBA 3 Lanes Map)
+        const arena = new THREE.Mesh(
+            new THREE.PlaneGeometry(300, 300),
+            new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.8 })
+        );
+        arena.rotation.x = -Math.PI / 2;
+        arena.receiveShadow = true;
+        this.scene.add(arena);
+
+        // Bases (Blue & Red)
+        const baseBlue = new THREE.Mesh(
+            new THREE.BoxGeometry(20, 10, 20),
+            new THREE.MeshStandardMaterial({ color: 0x3b82f6, emissive: 0x1d4ed8, emissiveIntensity: 0.4 })
+        );
+        baseBlue.position.set(-110, 5, -110);
+        this.scene.add(baseBlue);
+
+        const baseRed = new THREE.Mesh(
+            new THREE.BoxGeometry(20, 10, 20),
+            new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0x991b1b, emissiveIntensity: 0.4 })
+        );
+        baseRed.position.set(110, 5, 110);
+        this.scene.add(baseRed);
+
+        // Turrets & Jungle Trees
+        this.towers = [
+            { mesh: this.createTurret(0x3b82f6), pos: new THREE.Vector3(-60, 0, -60), hp: 3000, team: 'blue' },
+            { mesh: this.createTurret(0xef4444), pos: new THREE.Vector3(60, 0, 60), hp: 3000, team: 'red' }
+        ];
+
+        this.minions = [];
+    }
+
+    createTurret(colorHex) {
+        const group = new THREE.Group();
+        const base = new THREE.Mesh(
+            new THREE.CylinderGeometry(3, 4, 8, 12),
+            new THREE.MeshStandardMaterial({ color: colorHex, metalness: 0.6 })
+        );
+        base.position.y = 4;
+        group.add(base);
+        this.scene.add(group);
+        return group;
+    }
+
+    initPlayer() {
+        this.playerGroup = new THREE.Group();
+        const body = new THREE.Mesh(
+            new THREE.BoxGeometry(1.2, 2.2, 0.8),
+            new THREE.MeshStandardMaterial({ color: 0x3b82f6 })
+        );
+        body.position.y = 1.1;
+        this.playerGroup.add(body);
+
+        const head = new THREE.Mesh(
+            new THREE.BoxGeometry(0.8, 0.8, 0.8),
+            new THREE.MeshStandardMaterial({ color: 0xfde68a })
+        );
+        head.position.y = 2.5;
+        this.playerGroup.add(head);
+
+        this.playerGroup.position.set(-100, 0, -100);
+        this.scene.add(this.playerGroup);
+
+        this.playerHp = 1000;
+        this.playerMaxHp = 1000;
+        this.playerMp = 500;
+        this.playerMaxMp = 500;
+        this.playerGold = 300;
+        this.playerLevel = 1;
+
+        this.camYaw = 0;
+        this.camPitch = 0.6;
+        this.joyVec = { x: 0, y: 0 };
+    }
+
+    initControls() {
+        const joyBase = document.getElementById('joystick-base');
+        const joyStick = document.getElementById('joystick-stick');
+        let joyTouchId = null;
+
+        joyBase.addEventListener('touchstart', e => {
+            e.preventDefault();
+            const t = e.changedTouches[0];
+            joyTouchId = t.identifier;
+            this.updateJoystick(t.clientX, t.clientY);
+        });
+
+        window.addEventListener('touchmove', e => {
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                const t = e.changedTouches[i];
+                if (t.identifier === joyTouchId) {
+                    this.updateJoystick(t.clientX, t.clientY);
+                } else if (t.identifier === this.camTouchId) {
+                    const dx = t.clientX - this.lastCamX;
+                    const dy = t.clientY - this.lastCamY;
+                    this.camYaw -= dx * 0.005;
+                    this.camPitch = Math.max(0.2, Math.min(1.2, this.camPitch + dy * 0.005));
+                    this.lastCamX = t.clientX;
+                    this.lastCamY = t.clientY;
+                }
+            }
+        });
+
+        window.addEventListener('touchend', e => {
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                const t = e.changedTouches[i];
+                if (t.identifier === joyTouchId) {
+                    joyTouchId = null;
+                    this.joyVec = { x: 0, y: 0 };
+                    joyStick.style.transform = 'translate(0,0)';
+                } else if (t.identifier === this.camTouchId) {
+                    this.camTouchId = null;
+                }
+            }
+        });
+
+        const camZone = document.getElementById('camera-touch-zone');
+        camZone.addEventListener('touchstart', e => {
+            const t = e.changedTouches[0];
+            this.camTouchId = t.identifier;
+            this.lastCamX = t.clientX;
+            this.lastCamY = t.clientY;
+        });
+
+        // Skill Buttons
+        document.getElementById('btn-skill1').onclick = () => this.castSkill('S1');
+        document.getElementById('btn-skill2').onclick = () => this.castSkill('S2');
+        document.getElementById('btn-skill3').onclick = () => this.castSkill('S3');
+        document.getElementById('btn-ultimate').onclick = () => this.castSkill('ULTI');
+        document.getElementById('btn-attack').onclick = () => this.basicAttack();
+
+        // Shop Modal Toggle
+        const shopModal = document.getElementById('ingame-shop');
+        document.getElementById('shop-toggle-btn').onclick = () => {
+            shopModal.classList.toggle('hidden');
+            this.renderShopItems();
+        };
+        document.getElementById('close-shop-btn').onclick = () => shopModal.classList.add('hidden');
+    }
+
+    updateJoystick(cx, cy) {
+        const joyBase = document.getElementById('joystick-base');
+        const joyStick = document.getElementById('joystick-stick');
+        const rect = joyBase.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        let dx = cx - centerX;
+        let dy = cy - centerY;
+        const maxR = rect.width / 2 - 20;
+        const dist = Math.hypot(dx, dy);
+        if (dist > maxR) {
+            dx = (dx / dist) * maxR;
+            dy = (dy / dist) * maxR;
+        }
+        joyStick.style.transform = `translate(${dx}px, ${dy}px)`;
+        this.joyVec.x = dx / maxR;
+        this.joyVec.y = dy / maxR;
+    }
+
+    castSkill(name) {
+        this.showAnnouncer(`CAST SKILL: ${name}!`);
+    }
+
+    basicAttack() {
+        this.showAnnouncer('BASIC ATTACK!');
+    }
+
+    showAnnouncer(text) {
+        const ann = document.getElementById('battle-announcer');
+        ann.textContent = text;
+        ann.classList.remove('hidden');
+        setTimeout(() => ann.classList.add('hidden'), 2000);
+    }
+
+    renderShopItems() {
+        const grid = document.getElementById('shop-items-grid');
+        grid.innerHTML = `
+            <div class="shop-item-card"><b>Blade of Despair</b><small>+160 ATK • 1,200 Gold</small></div>
+            <div class="shop-item-card"><b>Berserker's Fury</b><small>+65 ATK • 1,100 Gold</small></div>
+            <div class="shop-item-card"><b>Immortal Armor</b><small>+800 HP • 2,100 Gold</small></div>
+            <div class="shop-item-card"><b>Holy Crystal</b><small>+180 Magic • 1,300 Gold</small></div>
+        `;
+    }
+
+    startMatch() {
+        this.showAnnouncer('WELCOME TO DIMZ LEGENDS! BATTLE START!');
+    }
+
+    update(delta) {
+        let moveX = this.joyVec.x;
+        let moveZ = this.joyVec.y;
+
+        const speed = 0.25;
+        const len = Math.hypot(moveX, moveZ);
+        if (len > 0) {
+            moveX /= len;
+            moveZ /= len;
+            const sinY = Math.sin(this.camYaw);
+            const cosY = Math.cos(this.camYaw);
+            const worldVX = (moveX * cosY + moveZ * sinY) * speed;
+            const worldVZ = (moveZ * cosY - moveX * sinY) * speed;
+
+            this.playerGroup.position.x += worldVX;
+            this.playerGroup.position.z += worldVZ;
+            this.playerGroup.rotation.y = Math.atan2(worldVX, worldVZ);
+        }
+
+        // Camera Follow
+        const camDist = 18;
+        const camX = this.playerGroup.position.x + Math.sin(this.camYaw) * camDist * Math.cos(this.camPitch);
+        const camY = this.playerGroup.position.y + Math.sin(this.camPitch) * camDist + 4;
+        const camZ = this.playerGroup.position.z + Math.cos(this.camYaw) * camDist * Math.cos(this.camPitch);
+
+        this.camera.position.lerp(new THREE.Vector3(camX, camY, camZ), 0.2);
+        this.camera.lookAt(this.playerGroup.position.x, this.playerGroup.position.y + 1, this.playerGroup.position.z);
+
+        if (this.multiplayer) {
+            this.multiplayer.sendPosition(this.playerGroup.position, this.playerGroup.rotation.y);
+            this.multiplayer.update(delta);
+        }
+    }
+}
+"""
+
+multiplayer_js = """// Socket.IO Multiplayer Client for DIMZ LEGENDS
+class MultiplayerClient {
+    constructor(gameInstance) {
+        this.game = gameInstance;
+        this.socket = null;
+        this.enabled = false;
+        this.remotePlayers = {};
+
+        try {
+            this.socket = io('http://localhost:3000', { timeout: 2000 });
+            this.socket.on('connect', () => {
+                this.enabled = true;
+                console.log('Terhubung ke Server Multiplayer DIMZ Legends');
+            });
+            this.socket.on('connect_error', () => {
+                this.enabled = false;
+                console.log('Server multiplayer offline. Berjalan dalam mode lokal.');
+            });
+            this.socket.on('playerMoved', (data) => {
+                if (this.remotePlayers[data.id]) {
+                    const rp = this.remotePlayers[data.id];
+                    rp.targetPos = new THREE.Vector3(data.x, data.y, data.z);
+                    rp.targetRot = data.rotY;
+                }
+            });
+        } catch (e) {
+            this.enabled = false;
+        }
+    }
+
+    sendPosition(pos, rotY) {
+        if (!this.enabled || !this.socket) return;
+        this.socket.emit('playerMovement', { x: pos.x, y: pos.y, z: pos.z, rotY });
+    }
+
+    update(delta) {
+        Object.keys(this.remotePlayers).forEach(id => {
+            const rp = this.remotePlayers[id];
+            if (rp.targetPos) {
+                rp.mesh.position.lerp(rp.targetPos, 0.2);
+                rp.mesh.rotation.y = THREE.MathUtils.lerp(rp.mesh.rotation.y, rp.targetRot, 0.2);
+            }
+        });
+    }
+}
+"""
+
+server_package_json = """{
+  "name": "dimz-legends-server",
+  "version": "1.0.0",
+  "description": "Multiplayer WebSocket Server untuk DIMZ LEGENDS",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "socket.io": "^4.7.2"
+  }
+}
+"""
+
+server_js = """const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const cors = require('cors');
+
+const app = express();
+app.use(cors());
+
+const server = http.createServer(app);
+const io = new Server(server, { cors: { origin: "*" } });
+
+const players = {};
+
+io.on('connection', (socket) => {
+    console.log(`Pemain terhubung: ${socket.id}`);
+    players[socket.id] = { id: socket.id, x: 0, y: 0, z: 0, rotY: 0 };
+
+    socket.on('playerMovement', (data) => {
+        if (players[socket.id]) {
+            players[socket.id].x = data.x;
+            players[socket.id].y = data.y;
+            players[socket.id].z = data.z;
+            players[socket.id].rotY = data.rotY;
+            socket.broadcast.emit('playerMoved', players[socket.id]);
+        }
+    });
+
+    socket.on('disconnect', () => {
+        console.log(`Pemain terputus: ${socket.id}`);
+        delete players[socket.id];
+        io.emit('disconnectPlayer', socket.id);
+    });
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    console.log(`Server Multiplayer DIMZ Legends aktif di http://localhost:${PORT}`);
+});
+"""
+
+readme_md = """# DIMZ LEGENDS - 5v5 Multiplayer MOBA 3D
+
+Game MOBA 3D multiplayer online (*5 vs 5*) dengan grafis berkualitas tinggi, 10 hero unik, map 3 jalur, sistem shop, dan server Node.js + Socket.IO.
+
+## Struktur Project
+```text
+DIMZ-LEGENDS/
+├── index.html
+├── style.css
+├── script.js
+├── game.js
+├── multiplayer.js
+├── assets/
+│   ├── heroes/
+│   ├── maps/
+│   ├── sounds/
+│   └── effects/
+├── server/
+│   ├── server.js
+│   └── package.json
+└── README.md
